@@ -235,7 +235,6 @@
   .preview-card {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
     gap: 18px;
   }
 
@@ -267,28 +266,6 @@
     border-radius: 14px;
     background: #fff;
     box-shadow: 0 12px 30px rgba(31, 41, 55, 0.12);
-  }
-
-  .qr-link-box {
-    display: grid;
-    gap: 8px;
-  }
-
-  .qr-link-box span {
-    color: var(--muted);
-    font-size: 13px;
-  }
-
-  .qr-link {
-    min-height: 44px;
-    padding: 12px 14px;
-    border-radius: 14px;
-    color: #374151;
-    background: #f9fafb;
-    border: 1px solid var(--border);
-    font-size: 13px;
-    line-height: 1.5;
-    word-break: break-all;
   }
 
   .tips {
@@ -334,7 +311,7 @@
 <div class="page">
   <header class="hero">
     <h1>二维码生成器</h1>
-    <p>输入文本、网址或任意内容，一键生成二维码图片</p>
+    <p>输入文本、网址或任意内容，自动生成二维码图片</p>
   </header>
 
   <main class="wrap">
@@ -349,7 +326,7 @@
           <label for="qrText">文本内容</label>
           <textarea id="qrText" placeholder="请输入要生成二维码的内容，例如：https://www.xiaonvshi.com"></textarea>
           <div class="helper">
-            <span>支持网址、普通文本、手机号、邮箱等内容</span>
+            <span>调整内容后会自动生成二维码</span>
             <span><strong id="charCount">0</strong> 字</span>
           </div>
         </div>
@@ -379,23 +356,18 @@
           </div>
 
           <div id="qrBox" class="qr-box">
-            <div class="qr-empty">二维码会显示在这里<br>输入内容后点击“生成二维码”</div>
+            <div class="qr-empty">二维码会显示在这里<br>输入内容后自动生成</div>
           </div>
         </div>
 
-        <div class="qr-link-box">
-          <span>二维码图片地址</span>
-          <div id="qrLink" class="qr-link">-</div>
-          <div class="actions">
-            <button id="copyLinkBtn" class="btn btn-light" type="button" disabled>复制图片地址</button>
-            <button id="downloadBtn" class="btn btn-success" type="button" disabled>下载二维码</button>
-          </div>
+        <div class="actions">
+          <button id="downloadBtn" class="btn btn-success" type="button" disabled>下载二维码</button>
         </div>
       </div>
     </section>
 
     <div class="tips">
-      提示：二维码内容会通过接口参数传递，请勿输入密码、密钥、身份证号等敏感信息。若部署后无法生成，通常是接口跨域或接口图片加载策略导致。
+      提示：二维码内容会通过接口参数传递，请勿输入密码、密钥、身份证号等敏感信息。
     </div>
   </main>
 
@@ -417,20 +389,22 @@
   const sampleBtn = document.getElementById("sampleBtn");
   const clearBtn = document.getElementById("clearBtn");
   const qrBox = document.getElementById("qrBox");
-  const qrLink = document.getElementById("qrLink");
-  const copyLinkBtn = document.getElementById("copyLinkBtn");
   const downloadBtn = document.getElementById("downloadBtn");
 
   let currentQrUrl = "";
+  let autoGenerateTimer = null;
 
   yearEl.textContent = new Date().getFullYear();
   updateCharCount();
 
-  qrText.addEventListener("input", updateCharCount);
+  qrText.addEventListener("input", function() {
+    updateCharCount();
+    scheduleAutoGenerate();
+  });
+
   generateBtn.addEventListener("click", generateQrCode);
   sampleBtn.addEventListener("click", fillSample);
   clearBtn.addEventListener("click", clearAll);
-  copyLinkBtn.addEventListener("click", copyQrLink);
   downloadBtn.addEventListener("click", downloadQrCode);
 
   qrText.addEventListener("keydown", function(event) {
@@ -439,10 +413,29 @@
     }
   });
 
+  function scheduleAutoGenerate() {
+    clearTimeout(autoGenerateTimer);
+
+    const text = qrText.value.trim();
+
+    if (!text) {
+      currentQrUrl = "";
+      downloadBtn.disabled = true;
+      setStatus("准备就绪", "");
+      showEmpty("二维码会显示在这里<br>输入内容后自动生成");
+      return;
+    }
+
+    setStatus("等待生成...", "warning");
+    autoGenerateTimer = setTimeout(generateQrCode, 500);
+  }
+
   function generateQrCode() {
     const text = qrText.value.trim();
 
     if (!text) {
+      currentQrUrl = "";
+      downloadBtn.disabled = true;
       setStatus("请输入内容", "warning");
       showEmpty("请输入要生成二维码的内容。");
       return;
@@ -450,27 +443,25 @@
 
     currentQrUrl = API_URL + encodeURIComponent(text);
     setStatus("生成中...", "warning");
-    setButtonsDisabled(true);
+    downloadBtn.disabled = true;
 
     qrBox.innerHTML = "";
 
     const img = document.createElement("img");
     img.className = "qr-image";
     img.alt = "生成的二维码";
-    img.src = currentQrUrl;
+    img.src = currentQrUrl + "&_t=" + Date.now();
 
     img.onload = function() {
       setStatus("生成成功", "success");
-      setButtonsDisabled(false);
-      qrLink.textContent = currentQrUrl;
+      downloadBtn.disabled = false;
     };
 
     img.onerror = function() {
       currentQrUrl = "";
       setStatus("生成失败", "error");
-      setButtonsDisabled(true);
-      qrLink.textContent = "-";
-      showEmpty("二维码加载失败，请检查接口是否可访问。");
+      downloadBtn.disabled = true;
+      showEmpty("二维码加载失败，请稍后重试。");
     };
 
     qrBox.appendChild(img);
@@ -485,31 +476,11 @@
   function clearAll() {
     qrText.value = "";
     currentQrUrl = "";
+    clearTimeout(autoGenerateTimer);
     updateCharCount();
-    qrLink.textContent = "-";
-    setButtonsDisabled(true);
+    downloadBtn.disabled = true;
     setStatus("已清空", "warning");
-    showEmpty("二维码会显示在这里<br>输入内容后点击“生成二维码”");
-  }
-
-  async function copyQrLink() {
-    if (!currentQrUrl) {
-      setStatus("没有可复制链接", "warning");
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(currentQrUrl);
-      setStatus("复制成功", "success");
-    } catch (error) {
-      const temp = document.createElement("textarea");
-      temp.value = currentQrUrl;
-      document.body.appendChild(temp);
-      temp.select();
-      document.execCommand("copy");
-      document.body.removeChild(temp);
-      setStatus("复制成功", "success");
-    }
+    showEmpty("二维码会显示在这里<br>输入内容后自动生成");
   }
 
   async function downloadQrCode() {
@@ -554,11 +525,6 @@
 
   function updateCharCount() {
     charCount.textContent = qrText.value.length;
-  }
-
-  function setButtonsDisabled(disabled) {
-    copyLinkBtn.disabled = disabled;
-    downloadBtn.disabled = disabled;
   }
 
   function showEmpty(html) {
